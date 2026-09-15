@@ -14,9 +14,16 @@ git push origin v1.4.9.custom.1
 
 The workflow calls RustDesk's existing reusable Flutter build workflow with
 its `windows-x64-only` input. This fork keeps only the Windows x64 entries in
-the two Windows matrices. The upstream Windows build and packaging steps
-produce the x64 EXE and MSI and attach them to a GitHub pre-release. No signing
-secrets are passed to the reusable workflow, so the packages are unsigned.
+the two Windows matrices and adds `--managed-endpoint` to that build. The two
+custom Windows jobs run only for that entry workflow; other callers continue
+with the reusable workflow's non-Windows jobs. The upstream Windows build and
+packaging steps produce the x64 EXE and MSI and attach them to a GitHub
+pre-release. No signing secrets are passed to the reusable workflow, so the
+packages are unsigned.
+
+The `managed-endpoint` feature builds an incoming-only Windows endpoint. It
+suppresses the viewer and tray, disables unused API and remote printer startup,
+and packages without user shortcuts.
 
 The selector intentionally still calls RustDesk's existing bridge workflow,
 which currently generates both of its bridge artifacts. The unused bridge
@@ -25,12 +32,12 @@ unchanged makes upgrades and rebases easier.
 
 ## Maintaining the fork
 
-The custom patch changes only job selection in RustDesk's existing build
-workflow; it does not duplicate the Windows build recipe. When updating the
-upstream baseline:
+The custom patch reuses RustDesk's existing build and packaging recipes. When
+updating the upstream baseline:
 
 1. Rebase the branch onto the selected upstream tag.
-2. Resolve selector conflicts, if any, without copying build steps.
+2. Reapply the small managed-endpoint patch series without copying build
+   steps.
 3. Confirm that all newly added non-Windows jobs are skipped when
    `windows-x64-only` is true.
 4. Run `actionlint` and create a new `v*.custom.*` test tag.
