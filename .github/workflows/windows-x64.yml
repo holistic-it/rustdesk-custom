@@ -1,6 +1,7 @@
 name: Windows x64 release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*.custom.*"
