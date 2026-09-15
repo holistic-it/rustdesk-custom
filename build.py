@@ -110,6 +110,11 @@ def make_parser():
     parser.add_argument('--flutter', action='store_true',
                         help='Build flutter package', default=False)
     parser.add_argument(
+        '--managed-endpoint',
+        action='store_true',
+        help='Build an incoming-only managed endpoint.',
+        default=False)
+    parser.add_argument(
         '--hwcodec',
         action='store_true',
         help='Enable feature hwcodec' + (
@@ -274,6 +279,8 @@ def external_resources(flutter, args, res_dir):
 
 def get_features(args):
     features = ['inline'] if not args.flutter else []
+    if args.managed_endpoint:
+        features.append('managed-endpoint')
     if args.hwcodec:
         features.append('hwcodec')
     if args.vram:
