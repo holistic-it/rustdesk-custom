@@ -1,0 +1,17 @@
+name: Windows x64 release
+
+on:
+  push:
+    tags:
+      - "v*.custom.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/flutter-build.yml
+    with:
+      upload-artifact: true
+      upload-tag: ${{ github.ref_name }}
+      windows-x64-only: true
