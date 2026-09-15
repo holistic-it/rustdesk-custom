@@ -2284,6 +2284,73 @@ pub fn is_custom_client() -> bool {
     get_app_name() != "RustDesk"
 }
 
+#[inline]
+pub const fn is_managed_endpoint() -> bool {
+    cfg!(feature = "managed-endpoint")
+}
+
+pub fn apply_managed_endpoint_policy() {
+    if !is_managed_endpoint() {
+        return;
+    }
+
+    config::HARD_SETTINGS.write().unwrap().extend([
+        ("conn-type".to_owned(), "incoming".to_owned()),
+        ("disable-settings".to_owned(), "Y".to_owned()),
+        ("disable-tcp-listen".to_owned(), "Y".to_owned()),
+    ]);
+
+    let mut settings = config::OVERWRITE_SETTINGS.write().unwrap();
+    settings.insert(keys::OPTION_ACCESS_MODE.to_owned(), "custom".to_owned());
+    settings.insert(keys::OPTION_ENABLE_KEYBOARD.to_owned(), "Y".to_owned());
+    for key in [
+        keys::OPTION_ENABLE_FILE_TRANSFER,
+        keys::OPTION_ENABLE_CAMERA,
+        keys::OPTION_ENABLE_TERMINAL,
+        keys::OPTION_ENABLE_AUDIO,
+        keys::OPTION_ENABLE_TUNNEL,
+        keys::OPTION_ENABLE_REMOTE_PRINTER,
+        keys::OPTION_ALLOW_REMOTE_CONFIG_MODIFICATION,
+        keys::OPTION_ENABLE_LAN_DISCOVERY,
+        keys::OPTION_DIRECT_SERVER,
+        keys::OPTION_ALLOW_AUTO_RECORD_INCOMING,
+        keys::OPTION_ALLOW_REMOVE_WALLPAPER,
+        keys::OPTION_ALLOW_WEBSOCKET,
+        keys::OPTION_ALLOW_INSECURE_TLS_FALLBACK,
+        keys::OPTION_ENABLE_TRUSTED_DEVICES,
+        keys::OPTION_ALLOW_AUTO_UPDATE,
+    ] {
+        settings.insert(key.to_owned(), "N".to_owned());
+    }
+    drop(settings);
+
+    config::DEFAULT_SETTINGS
+        .write()
+        .unwrap()
+        .insert(keys::OPTION_ENABLE_CLIPBOARD.to_owned(), "N".to_owned());
+
+    config::OVERWRITE_DISPLAY_SETTINGS.write().unwrap().insert(
+        keys::OPTION_ENABLE_FILE_COPY_PASTE.to_owned(),
+        "N".to_owned(),
+    );
+    config::OVERWRITE_LOCAL_SETTINGS
+        .write()
+        .unwrap()
+        .insert(keys::OPTION_ENABLE_CHECK_UPDATE.to_owned(), "N".to_owned());
+    config::BUILTIN_SETTINGS.write().unwrap().extend([
+        (keys::OPTION_HIDE_TRAY.to_owned(), "Y".to_owned()),
+        (
+            keys::OPTION_ALLOW_COMMAND_LINE_SETTINGS_WHEN_SETTINGS_DISABLED.to_owned(),
+            "Y".to_owned(),
+        ),
+    ]);
+}
+
+#[inline]
+pub fn is_incoming_only() -> bool {
+    is_managed_endpoint() || config::is_incoming_only()
+}
+
 pub fn verify_login(_raw: &str, _id: &str) -> bool {
     true
     /*

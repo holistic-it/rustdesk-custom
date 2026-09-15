@@ -2496,7 +2496,10 @@ impl Connection {
             });
             #[cfg(all(windows, feature = "flutter"))]
             std::thread::spawn(move || {
-                if crate::is_server() && !crate::check_process("--tray", false) {
+                if crate::is_server()
+                    && !crate::is_managed_endpoint()
+                    && !crate::check_process("--tray", false)
+                {
                     crate::platform::run_as_user(vec!["--tray"]).ok();
                 }
             });
@@ -5847,7 +5850,13 @@ async fn start_ipc(
     if stream.is_none() {
         #[allow(unused_mut)]
         #[allow(unused_assignments)]
-        let mut args = vec!["--cm"];
+        let managed_unattended = crate::is_managed_endpoint()
+            && Config::get_option(keys::OPTION_APPROVE_MODE) == "password";
+        let mut args = if cfg!(windows) && managed_unattended {
+            vec!["--cm-no-ui"]
+        } else {
+            vec!["--cm"]
+        };
         #[allow(unused_mut)]
         #[cfg(target_os = "linux")]
         let mut user = None;
