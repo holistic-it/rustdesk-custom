@@ -2284,6 +2284,35 @@ pub fn is_custom_client() -> bool {
     get_app_name() != "RustDesk"
 }
 
+#[inline]
+pub const fn is_managed_endpoint() -> bool {
+    cfg!(feature = "managed-endpoint")
+}
+
+pub fn apply_managed_endpoint_policy() {
+    if !is_managed_endpoint() {
+        return;
+    }
+
+    config::HARD_SETTINGS.write().unwrap().extend([
+        ("conn-type".to_owned(), "incoming".to_owned()),
+        ("disable-settings".to_owned(), "Y".to_owned()),
+        ("disable-tcp-listen".to_owned(), "Y".to_owned()),
+    ]);
+
+    config::BUILTIN_SETTINGS.write().unwrap().extend([
+        (
+            keys::OPTION_ALLOW_COMMAND_LINE_SETTINGS_WHEN_SETTINGS_DISABLED.to_owned(),
+            "Y".to_owned(),
+        ),
+    ]);
+}
+
+#[inline]
+pub fn is_incoming_only() -> bool {
+    is_managed_endpoint() || config::is_incoming_only()
+}
+
 pub fn verify_login(_raw: &str, _id: &str) -> bool {
     true
     /*
