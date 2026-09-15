@@ -93,7 +93,7 @@ jobs:
               arch: x86_64,
               flutter-arch: x64,
               vcpkg-triplet: x64-windows-static,
-              build-args: "--vram",
+              build-args: "--vram --managed-endpoint",
             }
     steps:
       - name: Export GitHub Actions cache environment variables
@@ -282,6 +282,10 @@ jobs:
               Write-Host "Ingore the printer driver error."
           }
 
+          # The managed endpoint never exposes remote printing.
+          Remove-Item -Force -ErrorAction SilentlyContinue ./rustdesk/printer_driver_adapter.dll
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue ./rustdesk/drivers/RustDeskPrinterDriver
+
       - name: find Runner.res
         # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res
         # Runner.rc does not contain actual version, but Runner.res does
@@ -341,7 +345,7 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           pushd ./res/msi
-          python preprocess.py --arp -d ../../rustdesk
+          python preprocess.py --arp --conn-type incoming -d ../../rustdesk
           nuget restore msi.sln
           $msiPlatform = if ('${{ matrix.job.arch }}' -eq 'aarch64') { 'ARM64' } else { 'x64' }
           msbuild msi.sln -p:Configuration=Release -p:Platform=$msiPlatform /p:TargetVersion=Windows10
