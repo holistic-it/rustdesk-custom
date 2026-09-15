@@ -33,6 +33,7 @@ pub fn core_main() -> Option<Vec<String>> {
         return None;
     }
     crate::load_custom_client();
+    crate::apply_managed_endpoint_policy();
     #[cfg(windows)]
     if !crate::platform::windows::bootstrap() {
         // return None to terminate the process
@@ -80,7 +81,7 @@ pub fn core_main() -> Option<Vec<String>> {
         i += 1;
     }
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    if args.is_empty() {
+    if args.is_empty() && !crate::is_managed_endpoint() {
         #[cfg(target_os = "linux")]
         let should_check_start_tray = crate::check_process("--server", false);
         // We can use `crate::check_process("--server", false)` on Windows.
@@ -117,12 +118,24 @@ pub fn core_main() -> Option<Vec<String>> {
     }
     #[cfg(feature = "flutter")]
     if _is_flutter_invoke_new_connection {
+        if crate::is_managed_endpoint() {
+            return None;
+        }
         return core_main_invoke_new_connection(std::env::args());
     }
     let click_setup = cfg!(windows) && args.is_empty() && crate::common::is_setup(&arg_exe);
     if click_setup && !config::is_disable_installation() {
         args.push("--install".to_owned());
         flutter_args.push("--install".to_string());
+    }
+    if crate::is_managed_endpoint() && args.is_empty() {
+        return None;
+    }
+    if crate::is_managed_endpoint()
+        && !args.is_empty()
+        && args[0].starts_with(&crate::get_uri_prefix())
+    {
+        return None;
     }
     if args.contains(&"--noinstall".to_string()) {
         args.clear();

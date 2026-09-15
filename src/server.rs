@@ -148,7 +148,7 @@ pub fn new() -> ServerPtr {
         }
     }
     #[cfg(all(target_os = "windows", feature = "flutter"))]
-    {
+    if !crate::is_managed_endpoint() {
         match printer_service::init(&crate::get_app_name()) {
             Ok(()) => {
                 log::info!("printer service initialized");
