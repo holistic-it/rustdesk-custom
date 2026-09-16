@@ -2491,6 +2491,14 @@ impl Connection {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn try_start_cm_ipc(&mut self) {
+        if crate::is_managed_endpoint() && password::hide_cm() {
+            // Holistic's hidden unattended mode is read-only and disables every CM-backed
+            // capability. Drop the receiver so CM messages fail instead of accumulating while
+            // the screen stream continues without a user-session helper process.
+            self.start_cm_ipc_para.take();
+            return;
+        }
+
         if let Some(p) = self.start_cm_ipc_para.take() {
             tokio::spawn(async move {
                 #[cfg(windows)]
