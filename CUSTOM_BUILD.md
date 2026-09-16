@@ -30,8 +30,10 @@ The `managed-endpoint` feature builds an incoming-only Windows endpoint. It
 suppresses the viewer and tray, skips the connection manager for read-only
 unattended access, leaves the connection window visible for interactive
 unattended access, disables unused API and remote printer startup, and packages
-without user shortcuts. Consent requires the session password before displaying
-a local approval prompt. The Fedora operator client remains stock.
+without user shortcuts. The Holistic agent applies each session's capability
+and network policy before installing the password and reporting the session
+ready. Consent requires the session password before displaying a local approval
+prompt. The Fedora operator client remains stock.
 
 The selector intentionally still calls RustDesk's existing bridge workflow,
 which currently generates both of its bridge artifacts. The unused bridge
