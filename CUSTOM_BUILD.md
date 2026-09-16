@@ -3,6 +3,11 @@
 The fork uses RustDesk 1.4.9 at upstream commit
 `6c578292e8ebbbec708b76986ba8c4bc7c509747`.
 
+The distributed product is **Holistic Remote**, based on RustDesk 1.4.9 and
+modified by Holistic IT GmbH. It is not affiliated with or endorsed by the
+RustDesk project. Corresponding source code is available at
+https://github.com/holistic-it/rustdesk-custom.
+
 ## Build
 
 Push a tag matching `v*.custom.*` to run the **Windows x64 release** workflow:

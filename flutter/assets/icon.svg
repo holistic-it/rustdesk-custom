@@ -1,1 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" viewBox="66.993 897.484 26 26"><linearGradient id="a" x1=".148" x2=".845" y1=".851" y2=".154" gradientTransform="matrix(26.301 0 0 26.331 90.674 911.757)" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#0071ff"/><stop offset="1" stop-color="#00bfe1"/></linearGradient><defs><linearGradient xlink:href="#a" id="b" x1=".148" x2=".845" y1=".851" y2=".154" gradientTransform="matrix(26.00048 0 0 25.99935 66.993 897.485)" gradientUnits="userSpaceOnUse"/></defs><path fill="url(#b)" d="m89.318 903.552-2.135 2.122c-.376.337-.558.879-.347 1.337 1.422 2.976.882 6.524-1.452 8.856-2.335 2.331-5.887 2.87-8.866 1.449-.439-.197-.954-.03-1.292.312l-2.17 2.167a1.154 1.154 0 0 0 .208 1.81 13.005 13.005 0 0 0 15.91-1.912 12.97 12.97 0 0 0 1.956-15.887 1.154 1.154 0 0 0-1.812-.254zm-18.467-2.305a12.969 12.969 0 0 0-2.02 15.885 1.154 1.154 0 0 0 1.812.254l2.124-2.11c.385-.336.572-.884.359-1.348-1.423-2.976-.884-6.524 1.451-8.856 2.334-2.332 5.887-2.871 8.866-1.45.434.194.942.033 1.281-.3l2.182-2.18a1.152 1.152 0 0 0-.208-1.81 13.009 13.009 0 0 0-15.893 1.973z"/></svg>
+<svg viewBox="0 0 122 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="right" x1="115.5" y1="11" x2="115.5" y2="84" gradientUnits="userSpaceOnUse">
+      <stop offset="0.161458" stop-color="#61EDBE"/>
+      <stop offset="1" stop-color="#61EDBE" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="left" x1="6.5" y1="105" x2="7" y2="39" gradientUnits="userSpaceOnUse">
+      <stop offset="0.223658" stop-color="#5D26C1"/>
+      <stop offset="0.812459" stop-color="#5D26C1" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="brand" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(100.5 18) rotate(134.714) scale(141.423 133.923)">
+      <stop offset="0.205877" stop-color="#61EDBE"/>
+      <stop offset="0.602873" stop-color="#A17FE0"/>
+      <stop offset="0.833333" stop-color="#5D26C1"/>
+    </radialGradient>
+  </defs>
+  <path d="M115.008 85.9999L114.5 22" stroke="url(#right)" stroke-width="13"/>
+  <path d="M7.5 106V36" stroke="url(#left)" stroke-width="13"/>
+  <path d="M7.5 102.5V110C7.5 111.657 8.84315 113 10.5 113H39.5C41.1569 113 42.5 111.657 42.5 110V93.4309C42.5 92.5258 42.099 91.6752 41.4049 91.0942C37.9932 88.2384 27.4583 79.1584 22 71.5C13.8012 59.9963 7.90717 38.8622 7.09578 35.8587C7.02909 35.6119 7 35.3706 7 35.1149V10C7 8.34315 8.34315 7 10 7H40.5C42.1569 7 43.5 8.34315 43.5 10V34.9431C43.5 35.3112 43.567 35.6748 43.7072 36.0152C44.6546 38.3149 48.8162 47.8429 55.5 55C60.5026 60.3568 68.4717 66.8768 72.5 73C75.7284 77.9074 76.9492 80.2206 78 86C79.4598 94.029 79.5877 104.722 79.5503 109.912C79.5381 111.606 80.9016 113 82.5952 113H112C113.657 113 115 111.657 115 110V85.6991C115 85.5665 114.992 85.4414 114.974 85.31C114.757 83.7559 113.191 73.0272 110.5 66.5C107.526 59.2859 104.541 55.846 100 49.5C93.7851 40.8143 82.6319 29.5835 79.4002 26.3849C78.8238 25.8144 78.5 25.0424 78.5 24.2314V10C78.5 8.34315 79.8431 7 81.5 7H111.5C113.157 7 114.5 8.34315 114.5 10V22.5" stroke="url(#brand)" stroke-width="13"/>
+</svg>
