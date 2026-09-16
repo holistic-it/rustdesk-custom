@@ -222,12 +222,12 @@ pub fn translate_locale(name: String, locale: &str) -> String {
         if let Some(value) = placeholder_value.as_ref() {
             s = s.replace("{}", &value);
         }
-        if !crate::is_rustdesk() {
+        if crate::DISPLAY_NAME != "RustDesk" {
             if s.contains("RustDesk")
                 && !name.starts_with("upgrade_rustdesk_server_pro")
                 && name != "powered_by_me"
             {
-                let app_name = crate::get_app_name();
+                let app_name = crate::DISPLAY_NAME.to_owned();
                 if !app_name.contains("RustDesk") {
                     s = s.replace("RustDesk", &app_name);
                 } else {
