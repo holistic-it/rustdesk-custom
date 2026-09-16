@@ -316,6 +316,8 @@ pub struct Connection {
     port_forward_address: String,
     tx_to_cm: mpsc::UnboundedSender<ipc::Data>,
     authorized: bool,
+    password_verified_for_approval: bool,
+    local_approval_granted: bool,
     require_2fa: Option<totp_rs::TOTP>,
     keyboard: bool,
     clipboard: bool,
@@ -517,6 +519,8 @@ impl Connection {
             port_forward_address: "".to_owned(),
             tx_to_cm,
             authorized: false,
+            password_verified_for_approval: false,
+            local_approval_granted: false,
             keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
             clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &control_permissions),
             audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &control_permissions),
@@ -674,7 +678,17 @@ impl Connection {
                 Some(data) = rx_from_cm.recv() => {
                     match data {
                         ipc::Data::Authorize => {
-                            conn.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Click);
+                            if crate::is_managed_endpoint()
+                                && password::approve_mode() == ApproveMode::Both
+                            {
+                                if !conn.password_verified_for_approval {
+                                    log::warn!("Ignoring local approval before password verification");
+                                    continue;
+                                }
+                                conn.local_approval_granted = true;
+                            } else {
+                                conn.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Click);
+                            }
                             conn.require_2fa.take();
                             if !conn.send_logon_response_and_keep_alive().await {
                                 break;
@@ -1616,6 +1630,12 @@ impl Connection {
         if self.authorized {
             return true;
         }
+        if crate::is_managed_endpoint()
+            && password::approve_mode() == ApproveMode::Both
+            && !self.local_approval_granted
+        {
+            return true;
+        }
         if self.require_2fa.is_some() && !self.is_recent_session(true) && !self.from_switch {
             self.require_2fa.as_ref().map(|totp| {
                 let bot = crate::auth_2fa::TelegramBot::get();
@@ -2524,6 +2544,17 @@ impl Connection {
                 return self.handle_authorized_scope_violation(message).await;
             }
         }
+        if self.password_verified_for_approval
+            && !self.local_approval_granted
+            && matches!(msg.union.as_ref(), Some(message::Union::LoginRequest(_)))
+        {
+            // Bind local approval to the login request whose password was validated and whose
+            // details were sent to the connection manager. A retry must not replace that request
+            // while its approval prompt is still pending.
+            self.send_login_error(crate::client::LOGIN_MSG_NO_PASSWORD_ACCESS)
+                .await;
+            return true;
+        }
         // After handling CloseReason messages, proceed to process other message types
         if let Some(message::Union::LoginRequest(lr)) = msg.union {
             self.handle_login_request_without_validation(&lr).await;
@@ -2675,9 +2706,14 @@ impl Connection {
             let allow_logon_screen_password =
                 crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon();
+            // The stock viewer understands No Password Access as "wait for local approval".
+            let require_password_and_approval = crate::is_managed_endpoint()
+                && password::approve_mode() == ApproveMode::Both;
 
             if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)
-                || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
+                || (!require_password_and_approval
+                    && password::approve_mode() == ApproveMode::Both
+                    && !password::has_valid_password())
             {
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
@@ -2696,26 +2732,38 @@ impl Connection {
                 return true;
             } else if self.is_recent_session(false) {
                 if err_msg.is_empty() {
-                    #[cfg(target_os = "linux")]
-                    self.linux_headless_handle.wait_desktop_cm_ready().await;
-                    if !self.send_logon_response_and_keep_alive().await {
-                        return false;
+                    if require_password_and_approval {
+                        self.password_verified_for_approval = true;
+                        self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), false);
+                        self.send_login_error(crate::client::LOGIN_MSG_NO_PASSWORD_ACCESS)
+                            .await;
+                    } else {
+                        #[cfg(target_os = "linux")]
+                        self.linux_headless_handle.wait_desktop_cm_ready().await;
+                        if !self.send_logon_response_and_keep_alive().await {
+                            return false;
+                        }
+                        self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
                     }
-                    self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
                 } else {
                     self.send_login_error(err_msg).await;
                 }
             } else if lr.password.is_empty() {
                 if err_msg.is_empty() {
-                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                    if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
-                        if let Some(keep_alive) =
-                            self.prepare_terminal_login_for_authorization().await
-                        {
-                            return keep_alive;
+                    if require_password_and_approval {
+                        self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_EMPTY)
+                            .await;
+                    } else {
+                        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                        if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
+                            if let Some(keep_alive) =
+                                self.prepare_terminal_login_for_authorization().await
+                            {
+                                return keep_alive;
+                            }
                         }
+                        self.try_start_cm(lr.my_id, lr.my_name, false);
                     }
-                    self.try_start_cm(lr.my_id, lr.my_name, false);
                 } else {
                     self.send_login_error(
                         crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY_PASSWORD_EMPTY,
@@ -2733,7 +2781,9 @@ impl Connection {
                     if err_msg.is_empty() {
                         self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
                             .await;
-                        self.try_start_cm(lr.my_id, lr.my_name, false);
+                        if !require_password_and_approval {
+                            self.try_start_cm(lr.my_id, lr.my_name, false);
+                        }
                     } else {
                         self.send_login_error(
                             crate::client::LOGIN_MSG_DESKTOP_SESSION_NOT_READY_PASSWORD_WRONG,
@@ -2743,12 +2793,19 @@ impl Connection {
                 } else {
                     self.update_failure_with_scope(failure, true, 0, FailureScope::Default);
                     if err_msg.is_empty() {
-                        #[cfg(target_os = "linux")]
-                        self.linux_headless_handle.wait_desktop_cm_ready().await;
-                        if !self.send_logon_response_and_keep_alive().await {
-                            return false;
+                        if require_password_and_approval {
+                            self.password_verified_for_approval = true;
+                            self.try_start_cm(lr.my_id, lr.my_name, false);
+                            self.send_login_error(crate::client::LOGIN_MSG_NO_PASSWORD_ACCESS)
+                                .await;
+                        } else {
+                            #[cfg(target_os = "linux")]
+                            self.linux_headless_handle.wait_desktop_cm_ready().await;
+                            if !self.send_logon_response_and_keep_alive().await {
+                                return false;
+                            }
+                            self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
                         }
-                        self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
                     } else {
                         self.send_login_error(err_msg).await;
                     }
