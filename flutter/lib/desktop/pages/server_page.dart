@@ -356,7 +356,10 @@ Widget buildConnectionCard(Client client) {
         client.type_() == ClientType.file ||
                 client.type_() == ClientType.portForward ||
                 client.type_() == ClientType.terminal ||
-                client.disconnected
+                client.disconnected ||
+                bind.mainGetBuildinOption(
+                        key: kOptionEnablePermChangeInAcceptWindow) ==
+                    'N'
             ? Offstage()
             : _PrivilegeBoard(client: client),
         Expanded(

@@ -2304,6 +2304,10 @@ pub fn apply_managed_endpoint_policy() {
 
     config::BUILTIN_SETTINGS.write().unwrap().extend([
         (
+            keys::OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW.to_owned(),
+            "N".to_owned(),
+        ),
+        (
             keys::OPTION_ALLOW_COMMAND_LINE_SETTINGS_WHEN_SETTINGS_DISABLED.to_owned(),
             "Y".to_owned(),
         ),
