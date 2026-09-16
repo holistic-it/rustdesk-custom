@@ -28,7 +28,9 @@ packages are unsigned.
 
 The `managed-endpoint` feature builds an incoming-only Windows endpoint. It
 suppresses the viewer and tray, disables unused API and remote printer startup,
-and packages without user shortcuts.
+and packages without user shortcuts. Consent requires the session password
+before displaying a local approval prompt. The Fedora operator client remains
+stock.
 
 The selector intentionally still calls RustDesk's existing bridge workflow,
 which currently generates both of its bridge artifacts. The unused bridge
