@@ -349,7 +349,11 @@ jobs:
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
           pushd ./res/msi
-          python preprocess.py --conn-type incoming --manufacturer "Holistic IT GmbH" -d ../../rustdesk
+          if ($env:TAG_NAME -notmatch '\.custom\.(?<revision>\d+)$') {
+            throw "The release tag '$env:TAG_NAME' does not contain a numeric custom revision."
+          }
+          $msiVersion = "$env:VERSION.$($Matches.revision)"
+          python preprocess.py --version $msiVersion --conn-type incoming --manufacturer "Holistic IT GmbH" -d ../../rustdesk
           nuget restore msi.sln
           $msiPlatform = if ('${{ matrix.job.arch }}' -eq 'aarch64') { 'ARM64' } else { 'x64' }
           msbuild msi.sln -p:Configuration=Release -p:Platform=$msiPlatform /p:TargetVersion=Windows10
