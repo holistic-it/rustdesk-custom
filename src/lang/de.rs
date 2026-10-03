@@ -395,7 +395,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("One-time Password", "Einmalpasswort"),
         ("Use one-time password", "Einmalpasswort verwenden"),
         ("One-time password length", "Länge des Einmalpassworts"),
-        ("Request access to your device", "Zugriff auf Ihr Gerät anfordern"),
+        ("Request access to your device", "Fordert Zugriff auf Ihr Gerät an"),
         ("Hide connection management window", "Fenster zur Verwaltung der Verbindung verstecken"),
         ("hide_cm_tip", "Dies ist nur möglich, wenn der Zugriff über ein permanentes Passwort erfolgt."),
         ("wayland_experiment_tip", "Die Unterstützung von Wayland ist nur experimentell. Bitte nutzen Sie X11, wenn Sie einen unbeaufsichtigten Zugriff benötigen."),
