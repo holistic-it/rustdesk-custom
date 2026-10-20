@@ -2329,7 +2329,7 @@ impl Connection {
                 // Stock viewers need display metadata to show the native picker.
                 // This response does not authorize or subscribe to desktop services.
                 pi.displays = match display_service::update_get_sync_displays_on_login().await {
-                    Ok(displays) if !displays.is_empty() => displays,
+                    Ok((displays, _)) if !displays.is_empty() => displays,
                     _ => {
                         self.send_login_error("No displays").await;
                         return false;
