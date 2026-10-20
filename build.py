@@ -8,6 +8,7 @@ import urllib.request
 import shutil
 import hashlib
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -277,6 +278,15 @@ def external_resources(flutter, args, res_dir):
                 shutil.copytree(f, f'{flutter_build_dir_2}{f.stem}')
 
 
+def apply_managed_endpoint_patch():
+    root = Path(__file__).resolve().parent
+    patch = str(root / 'res/hbb-common.patch')
+    command = ['git', '-C', str(root / 'libs/hbb_common'), 'apply']
+    if subprocess.run(command + ['--reverse', '--check', patch], capture_output=True).returncode != 0:
+        subprocess.run(command + ['--check', patch], check=True)
+        subprocess.run(command + [patch], check=True)
+
+
 def get_features(args):
     features = ['inline'] if not args.flutter else []
     if args.managed_endpoint:
@@ -479,6 +489,8 @@ def main():
     global skip_cargo
     parser = make_parser()
     args = parser.parse_args()
+    if args.managed_endpoint:
+        apply_managed_endpoint_patch()
 
     if os.path.exists(exe_path):
         os.unlink(exe_path)

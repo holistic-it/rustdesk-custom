@@ -1,0 +1,106 @@
+diff --git a/src/config.rs b/src/config.rs
+index 1391ed4..d29e9f1 100644
+--- a/src/config.rs
++++ b/src/config.rs
+@@ -117,8 +117,8 @@ const CHARS: &[char] = &[
+     'm', 'n', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+ ];
+
+-pub const RENDEZVOUS_SERVERS: &[&str] = &["rs-ny.rustdesk.com"];
+-pub const RS_PUB_KEY: &str = "OeVuKk5nlHiXp+APNn0Y3pC1Iwpwn44JGqrQCsWqmBw=";
++pub const RENDEZVOUS_SERVERS: &[&str] = &[];
++pub const RS_PUB_KEY: &str = "";
+
+ pub const RENDEZVOUS_PORT: i32 = 21116;
+ pub const RELAY_PORT: i32 = 21117;
+@@ -918,16 +918,13 @@ impl Config {
+         if rendezvous_server.is_empty() {
+             rendezvous_server = PROD_RENDEZVOUS_SERVER.read().unwrap().clone();
+         }
+-        if rendezvous_server.is_empty() {
+-            rendezvous_server = CONFIG2.read().unwrap().rendezvous_server.clone();
+-        }
+         if rendezvous_server.is_empty() {
+             rendezvous_server = Self::get_rendezvous_servers()
+                 .drain(..)
+                 .next()
+                 .unwrap_or_default();
+         }
+-        if !rendezvous_server.contains(':') {
++        if !rendezvous_server.is_empty() && !rendezvous_server.contains(':') {
+             rendezvous_server = format!("{rendezvous_server}:{RENDEZVOUS_PORT}");
+         }
+         rendezvous_server
+@@ -946,17 +943,6 @@ impl Config {
+         if !s.is_empty() {
+             return vec![s];
+         }
+-        let serial_obsolute = CONFIG2.read().unwrap().serial > SERIAL;
+-        if serial_obsolute {
+-            let ss: Vec<String> = Self::get_option("rendezvous-servers")
+-                .split(',')
+-                .filter(|x| x.contains('.'))
+-                .map(|x| x.to_owned())
+-                .collect();
+-            if !ss.is_empty() {
+-                return ss;
+-            }
+-        }
+         return RENDEZVOUS_SERVERS.iter().map(|x| x.to_string()).collect();
+     }
+
+diff --git a/src/webrtc.rs b/src/webrtc.rs
+index 8f3c410..b6c2ed8 100644
+--- a/src/webrtc.rs
++++ b/src/webrtc.rs
+@@ -39,15 +39,7 @@ pub struct WebRTCStream {
+ /// Most browsers, including Chromium, enforce this protocol limit.
+ const DATA_CHANNEL_BUFFER_SIZE: u16 = u16::MAX;
+
+-// use 3 public STUN servers to find out the NAT type, 2 must be the same address but different ports
+-// https://stackoverflow.com/questions/72805316/determine-nat-mapping-behaviour-using-two-stun-servers
+-// luckily nextcloud supports two ports for STUN
+-// unluckily webrtc-rs does not use the same port to do the STUN request
+-static DEFAULT_ICE_SERVERS: [&str; 3] = [
+-    "stun:stun.cloudflare.com:3478",
+-    "stun:stun.nextcloud.com:3478",
+-    "stun:stun.nextcloud.com:443",
+-];
++static DEFAULT_ICE_SERVERS: &[&str] = &[];
+
+ lazy_static::lazy_static! {
+     static ref SESSIONS: Arc::<Mutex<HashMap<String, WebRTCStream>>> = Default::default();
+@@ -189,7 +181,7 @@ impl WebRTCStream {
+         }
+
+         // If there is no STUN (either TURN-only or empty config) → prepend defaults
+-        if !has_stun {
++        if !has_stun && !DEFAULT_ICE_SERVERS.is_empty() {
+             ice_servers.insert(
+                 0,
+                 RTCIceServer {
+@@ -515,7 +507,6 @@ pub fn is_webrtc_endpoint(endpoint: &str) -> bool {
+ mod tests {
+     use crate::config;
+     use crate::webrtc::WebRTCStream;
+-    use crate::webrtc::DEFAULT_ICE_SERVERS;
+     use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
+
+     #[test]
+@@ -568,10 +559,12 @@ mod tests {
+         );
+
+         config::Config::set_option("ice-servers".to_string(), "".to_string());
+-        assert_eq!(
+-            WebRTCStream::get_ice_servers()[0].urls[0],
+-            DEFAULT_ICE_SERVERS[0].to_string()
+-        );
++        assert!(WebRTCStream::get_ice_servers().is_empty());
++
++        config::Config::set_option("ice-servers".to_string(), "turn://example.com".to_string());
++        let servers = WebRTCStream::get_ice_servers();
++        assert_eq!(servers.len(), 1);
++        assert_eq!(servers[0].urls[0], "turn:example.com:3478");
+
+         config::Config::set_option(
+             "ice-servers".to_string(),

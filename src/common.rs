@@ -581,6 +581,9 @@ impl Drop for CheckTestNatType {
 }
 
 pub fn test_nat_type() {
+    if is_managed_endpoint() {
+        return;
+    }
     test_ipv6_sync();
     use std::sync::atomic::{AtomicBool, Ordering};
     std::thread::spawn(move || {
@@ -627,6 +630,9 @@ async fn test_nat_type_() -> ResultType<bool> {
     log::info!("Testing nat ...");
     let start = std::time::Instant::now();
     let server1 = Config::get_rendezvous_server();
+    if server1.is_empty() {
+        return Ok(true);
+    }
     let server2 = crate::increase_port(&server1, -1);
     let mut msg_out = RendezvousMessage::new();
     let serial = Config::get_serial();
@@ -1108,6 +1114,9 @@ pub fn get_ipv6_punch_enabled() -> bool {
 pub fn get_local_option(key: &str) -> String {
     let v = LocalConfig::get_option(key);
     if key == keys::OPTION_ENABLE_UDP_PUNCH || key == keys::OPTION_ENABLE_IPV6_PUNCH {
+        if is_managed_endpoint() {
+            return "N".to_owned();
+        }
         if v.is_empty() {
             if !is_public(&Config::get_rendezvous_server()) {
                 return "N".to_owned();
@@ -2400,20 +2409,15 @@ async fn stun_ipv4_test(stun_server: &str) -> ResultType<(SocketAddr, String)> {
     })
 }
 
-static STUNS_V4: [&str; 3] = [
-    "stun.l.google.com:19302",
-    "stun.cloudflare.com:3478",
-    "stun.nextcloud.com:3478",
-];
+static STUNS_V4: &[&str] = &[];
 
-static STUNS_V6: [&str; 3] = [
-    "stun.l.google.com:19302",
-    "stun.cloudflare.com:3478",
-    "stun.nextcloud.com:3478",
-];
+static STUNS_V6: &[&str] = &[];
 
 pub async fn test_nat_ipv4() -> ResultType<(SocketAddr, String)> {
     use hbb_common::futures::future::{select_ok, FutureExt};
+    if is_managed_endpoint() || STUNS_V4.is_empty() {
+        bail!("No STUN servers configured");
+    }
     let tests = STUNS_V4
         .iter()
         .map(|&stun| stun_ipv4_test(stun).boxed())
@@ -2433,16 +2437,19 @@ pub async fn test_nat_ipv4() -> ResultType<(SocketAddr, String)> {
 }
 
 async fn test_bind_ipv6() -> ResultType<SocketAddr> {
+    let stun_server = STUNS_V6
+        .first()
+        .ok_or_else(|| anyhow!("No STUN servers configured"))?;
     let local_addr = SocketAddr::from(([0u16; 8], 0)); // [::]:0
     let socket = UdpSocket::bind(local_addr).await?;
-    let addr = STUNS_V6[0]
+    let addr = stun_server
         .to_socket_addrs()?
         .filter(|x| x.is_ipv6())
         .next()
         .ok_or_else(|| {
             anyhow!(
                 "Failed to resolve STUN ipv6 server address: {}",
-                STUNS_V6[0]
+                stun_server
             )
         })?;
     socket.connect(addr).await?;
@@ -2450,6 +2457,9 @@ async fn test_bind_ipv6() -> ResultType<SocketAddr> {
 }
 
 pub async fn test_ipv6() -> Option<tokio::task::JoinHandle<()>> {
+    if is_managed_endpoint() || STUNS_V6.is_empty() {
+        return None;
+    }
     if PUBLIC_IPV6_ADDR
         .lock()
         .unwrap()

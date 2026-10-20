@@ -361,6 +361,39 @@ jobs:
           mv $msi.FullName ../../SignOutput/holistic-remote-${{ env.VERSION }}-${{ matrix.job.arch }}.msi
           sha256sum ../../SignOutput/holistic-remote-*.msi
 
+      - name: Verify managed MSI service lifecycle
+        if: env.UPLOAD_ARTIFACT == 'true'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msi = (Resolve-Path ./SignOutput/holistic-remote-${{ env.VERSION }}-${{ matrix.job.arch }}.msi).Path
+          function Invoke-Msi([string[]]$Arguments) {
+            $process = Start-Process msiexec.exe -ArgumentList $Arguments -Wait -PassThru
+            if ($process.ExitCode -notin @(0, 3010)) {
+              throw "Windows Installer failed with exit code $($process.ExitCode)."
+            }
+          }
+          function Assert-DormantService {
+            $service = Get-CimInstance Win32_Service -Filter "Name = 'RustDesk'"
+            if ($null -eq $service -or $service.State -ne 'Stopped' -or $service.StartMode -ne 'Disabled') {
+              throw 'The MSI must leave the RustDesk service installed, stopped, and disabled.'
+            }
+            if (Get-Process rustdesk -ErrorAction SilentlyContinue) {
+              throw 'The MSI must not launch RustDesk.'
+            }
+          }
+          try {
+            Invoke-Msi @('/i', "`"$msi`"", '/qn', '/norestart')
+            Assert-DormantService
+            Set-Service RustDesk -StartupType Automatic
+            Invoke-Msi @('/i', "`"$msi`"", '/qn', '/norestart', 'REINSTALL=ALL', 'REINSTALLMODE=vamus')
+            Assert-DormantService
+          } finally {
+            Invoke-Msi @('/x', "`"$msi`"", '/qn', '/norestart')
+          }
+          if (Get-CimInstance Win32_Service -Filter "Name = 'RustDesk'") {
+            throw 'Uninstall must remove the RustDesk service.'
+          }
+
       - name: Sign rustdesk self-extracted file
         if: env.UPLOAD_ARTIFACT == 'true' && env.SIGN_BASE_URL != '-2'
         shell: bash

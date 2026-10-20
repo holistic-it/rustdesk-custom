@@ -295,18 +295,22 @@ impl Client {
             crate::get_rendezvous_server(1_000).await
         } else {
             if other_server == PUBLIC_SERVER {
+                let Some((server, servers)) = RENDEZVOUS_SERVERS.split_first() else {
+                    bail!("Public rendezvous servers are disabled");
+                };
                 (
-                    check_port(RENDEZVOUS_SERVERS[0], RENDEZVOUS_PORT),
-                    RENDEZVOUS_SERVERS[1..]
-                        .iter()
-                        .map(|x| x.to_string())
-                        .collect(),
+                    check_port(server, RENDEZVOUS_PORT),
+                    servers.iter().map(|x| x.to_string()).collect(),
                     true,
                 )
             } else {
                 (check_port(other_server, RENDEZVOUS_PORT), Vec::new(), true)
             }
         };
+
+        if rendezvous_server.is_empty() {
+            bail!("No rendezvous server configured");
+        }
 
         if crate::get_ipv6_punch_enabled() {
             crate::test_ipv6().await;

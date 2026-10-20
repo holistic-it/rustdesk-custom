@@ -35,6 +35,18 @@ and network policy before installing the password and reporting the session
 ready. Consent requires the session password before displaying a local approval
 prompt. The Fedora operator client remains stock.
 
+The MSI installs the service stopped and disabled, including after repair or
+upgrade. The Holistic agent enables it for a session and disables it afterward.
+The EXE installer retains its existing service installation behavior.
+
+Public rendezvous servers, their public key, and native/WebRTC STUN defaults
+are removed. Only explicitly configured rendezvous servers are used; cached
+server lists are ignored. Relay discovery uses the configured rendezvous server.
+Managed endpoints always use the relay, skip NAT/STUN discovery, and do not
+start a direct-access listener.
+`build.py --managed-endpoint` applies `res/hbb-common.patch` to the pinned
+upstream shared-library submodule before compiling; no separate fork is needed.
+
 The selector calls RustDesk's existing bridge workflow, which generates both
 bridge artifacts even though the managed Windows build uses only one of them.
 
