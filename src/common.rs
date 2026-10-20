@@ -660,6 +660,9 @@ impl Drop for CheckTestNatType {
 }
 
 pub fn test_nat_type() {
+    if is_managed_endpoint() {
+        return;
+    }
     test_ipv6_sync();
     use std::sync::atomic::{AtomicBool, Ordering};
     std::thread::spawn(move || {
@@ -706,6 +709,9 @@ async fn test_nat_type_() -> ResultType<bool> {
     log::info!("Testing nat ...");
     let start = std::time::Instant::now();
     let server1 = Config::get_rendezvous_server();
+    if server1.is_empty() {
+        return Ok(true);
+    }
     let server2 = crate::increase_port(&server1, -1);
     let mut msg_out = RendezvousMessage::new();
     let serial = Config::get_serial();
@@ -1083,6 +1089,8 @@ pub fn get_app_name() -> String {
     hbb_common::config::APP_NAME.read().unwrap().clone()
 }
 
+pub const DISPLAY_NAME: &str = "Holistic Remote";
+
 #[inline]
 pub fn is_rustdesk() -> bool {
     hbb_common::config::APP_NAME.read().unwrap().eq("RustDesk")
@@ -1204,6 +1212,17 @@ pub fn get_webrtc_enabled() -> bool {
 }
 
 pub fn get_local_option(key: &str) -> String {
+    if is_managed_endpoint()
+        && matches!(
+            key,
+            keys::OPTION_ENABLE_TCP_PUNCH
+                | keys::OPTION_ENABLE_UDP_PUNCH
+                | keys::OPTION_ENABLE_IPV6_PUNCH
+                | keys::OPTION_ENABLE_WEBRTC
+        )
+    {
+        return "N".to_owned();
+    }
     let v = LocalConfig::get_option(key);
     if key == keys::OPTION_ENABLE_UDP_PUNCH
         || key == keys::OPTION_ENABLE_IPV6_PUNCH
@@ -2561,6 +2580,39 @@ pub fn is_custom_client() -> bool {
     get_app_name() != "RustDesk"
 }
 
+#[inline]
+pub const fn is_managed_endpoint() -> bool {
+    cfg!(feature = "managed-endpoint")
+}
+
+pub fn apply_managed_endpoint_policy() {
+    if !is_managed_endpoint() {
+        return;
+    }
+
+    config::HARD_SETTINGS.write().unwrap().extend([
+        ("conn-type".to_owned(), "incoming".to_owned()),
+        ("disable-settings".to_owned(), "Y".to_owned()),
+        ("disable-tcp-listen".to_owned(), "Y".to_owned()),
+    ]);
+
+    config::BUILTIN_SETTINGS.write().unwrap().extend([
+        (
+            keys::OPTION_ENABLE_PERM_CHANGE_IN_ACCEPT_WINDOW.to_owned(),
+            "N".to_owned(),
+        ),
+        (
+            keys::OPTION_ALLOW_COMMAND_LINE_SETTINGS_WHEN_SETTINGS_DISABLED.to_owned(),
+            "Y".to_owned(),
+        ),
+    ]);
+}
+
+#[inline]
+pub fn is_incoming_only() -> bool {
+    is_managed_endpoint() || config::is_incoming_only()
+}
+
 pub fn verify_login(_raw: &str, _id: &str) -> bool {
     true
     /*
@@ -2651,6 +2703,9 @@ async fn test_bind_ipv6() -> ResultType<SocketAddr> {
 }
 
 pub async fn test_ipv6() -> Option<tokio::task::JoinHandle<()>> {
+    if is_managed_endpoint() || hbb_common::webrtc::WebRTCStream::default_stun_servers().is_empty() {
+        return None;
+    }
     {
         // One look and one claim of the minute, under one lock: two connections arriving
         // together would otherwise both find it over and both probe.
@@ -2953,6 +3008,19 @@ mod tests {
         time::{interval, interval_at, sleep, Duration, Instant, Interval},
     };
     use std::collections::HashSet;
+
+    #[cfg(feature = "managed-endpoint")]
+    #[test]
+    fn managed_endpoint_disables_direct_transports() {
+        for key in [
+            keys::OPTION_ENABLE_TCP_PUNCH,
+            keys::OPTION_ENABLE_UDP_PUNCH,
+            keys::OPTION_ENABLE_IPV6_PUNCH,
+            keys::OPTION_ENABLE_WEBRTC,
+        ] {
+            assert_eq!(get_local_option(key), "N");
+        }
+    }
 
     #[test]
     fn a_cursor_content_id_fits_a_web_client_number() {

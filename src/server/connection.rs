@@ -372,6 +372,9 @@ pub struct Connection {
     authorized: bool,
     // The place among the unauthorized connections; given back at authorization.
     unauthorized_id: Option<UnauthorizedID>,
+    password_verified_for_approval: bool,
+    local_approval_granted: bool,
+    selecting_windows_session: bool,
     require_2fa: Option<totp_rs::TOTP>,
     awaiting_2fa: bool,
     keyboard: bool,
@@ -587,6 +590,9 @@ impl Connection {
             tx_to_cm,
             authorized: false,
             unauthorized_id: Some(unauthorized),
+            password_verified_for_approval: false,
+            local_approval_granted: false,
+            selecting_windows_session: false,
             keyboard: Self::permission(keys::OPTION_ENABLE_KEYBOARD, &control_permissions),
             clipboard: Self::permission(keys::OPTION_ENABLE_CLIPBOARD, &control_permissions),
             audio: Self::permission(keys::OPTION_ENABLE_AUDIO, &control_permissions),
@@ -749,7 +755,17 @@ impl Connection {
                 Some(data) = rx_from_cm.recv() => {
                     match data {
                         ipc::Data::Authorize => {
-                            conn.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Click);
+                            if crate::is_managed_endpoint()
+                                && password::approve_mode() == ApproveMode::Both
+                            {
+                                if !conn.password_verified_for_approval || conn.selecting_windows_session {
+                                    log::warn!("Ignoring local approval before password verification");
+                                    continue;
+                                }
+                                conn.local_approval_granted = true;
+                            } else {
+                                conn.set_conn_audit_primary_auth(ConnAuditPrimaryAuth::Click);
+                            }
                             conn.require_2fa.take();
                             if !conn.send_logon_response_and_keep_alive().await {
                                 break;
@@ -1844,6 +1860,12 @@ impl Connection {
         if self.authorized {
             return true;
         }
+        if crate::is_managed_endpoint()
+            && password::approve_mode() == ApproveMode::Both
+            && !self.local_approval_granted
+        {
+            return true;
+        }
         if self.require_2fa.is_some() && !self.is_recent_session(true) && !self.from_switch {
             self.require_2fa.as_ref().map(|totp| {
                 let bot = crate::auth_2fa::TelegramBot::get();
@@ -2266,11 +2288,15 @@ impl Connection {
         pi: &mut PeerInfo,
         wait_session_id_confirm: &mut bool,
     ) {
+        // Managed Prompt connections already chose their session before approval.
+        if crate::is_managed_endpoint() && self.local_approval_granted {
+            return;
+        }
         let sessions = crate::platform::get_available_sessions(true);
         if let Some(current_sid) = crate::platform::get_current_process_session_id() {
             if crate::platform::is_installed()
                 && crate::platform::is_share_rdp()
-                && raii::AuthedConnID::non_port_forward_conn_count() == 1
+                && raii::AuthedConnID::non_port_forward_conn_count() == usize::from(self.authorized)
                 && sessions.len() > 1
                 && sessions.iter().any(|e| e.sid == current_sid)
                 && get_version_number(&self.lr.version) >= get_version_number("1.2.4")
@@ -2284,6 +2310,49 @@ impl Connection {
                 *wait_session_id_confirm = true;
             }
         }
+    }
+
+    async fn request_managed_approval(&mut self) -> bool {
+        self.password_verified_for_approval = true;
+        #[cfg(windows)]
+        if self.is_remote() && self.port_forward_address.is_empty() {
+            let mut pi = PeerInfo {
+                username: crate::platform::get_active_username(),
+                hostname: crate::whoami_hostname(),
+                platform: hbb_common::whoami::platform().to_string(),
+                version: VERSION.to_owned(),
+                ..Default::default()
+            };
+            let mut select = false;
+            self.handle_windows_specific_session(&mut pi, &mut select);
+            if select {
+                // Stock viewers need display metadata to show the native picker.
+                // This response does not authorize or subscribe to desktop services.
+                pi.displays = match display_service::update_get_sync_displays_on_login().await {
+                    Ok(displays) if !displays.is_empty() => displays,
+                    _ => {
+                        self.send_login_error("No displays").await;
+                        return false;
+                    }
+                };
+                self.selecting_windows_session = true;
+                let mut response = LoginResponse::new();
+                response.set_peer_info(pi);
+                let mut message = Message::new();
+                message.set_login_response(response);
+                self.send(message).await;
+                return true;
+            }
+        }
+        self.request_local_approval().await;
+        true
+    }
+
+    async fn request_local_approval(&mut self) {
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        self.try_start_cm_ipc();
+        self.try_start_cm(self.lr.my_id.clone(), self.lr.my_name.clone(), false);
+        self.send_login_error(crate::client::LOGIN_MSG_NO_PASSWORD_ACCESS).await;
     }
 
     fn on_remote_authorized(&self) {
@@ -2815,6 +2884,20 @@ impl Connection {
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn try_start_cm_ipc(&mut self) {
+        if crate::is_managed_endpoint()
+            && password::approve_mode() == ApproveMode::Both
+            && (!self.password_verified_for_approval || self.selecting_windows_session)
+        {
+            return;
+        }
+        if crate::is_managed_endpoint() && password::hide_cm() {
+            // Holistic's hidden unattended mode is read-only and disables every CM-backed
+            // capability. Drop the receiver so CM messages fail instead of accumulating while
+            // the screen stream continues without a user-session helper process.
+            self.start_cm_ipc_para.take();
+            return;
+        }
+
         if let Some(p) = self.start_cm_ipc_para.take() {
             tokio::spawn(async move {
                 #[cfg(windows)]
@@ -2833,7 +2916,10 @@ impl Connection {
             });
             #[cfg(all(windows, feature = "flutter"))]
             std::thread::spawn(move || {
-                if crate::is_server() && !crate::check_process("--tray", false) {
+                if crate::is_server()
+                    && !crate::is_managed_endpoint()
+                    && !crate::check_process("--tray", false)
+                {
                     crate::platform::run_as_user(vec!["--tray"]).ok();
                 }
             });
@@ -2857,6 +2943,25 @@ impl Connection {
             if let Some(message) = self.authorized_scope_violation(&msg) {
                 return self.handle_authorized_scope_violation(message).await;
             }
+        }
+        // While the native picker is open, permit only its response. In particular,
+        // keep input, clipboard and login retries blocked until selection and approval.
+        if self.selecting_windows_session
+            && !matches!(&msg.union, Some(message::Union::Misc(misc))
+                if matches!(&misc.union, Some(misc::Union::SelectedSid(_))))
+        {
+            return true;
+        }
+        if self.password_verified_for_approval
+            && !self.local_approval_granted
+            && matches!(msg.union.as_ref(), Some(message::Union::LoginRequest(_)))
+        {
+            // Bind local approval to the login request whose password was validated and whose
+            // details were sent to the connection manager. A retry must not replace that request
+            // while its approval prompt is still pending.
+            self.send_login_error(crate::client::LOGIN_MSG_NO_PASSWORD_ACCESS)
+                .await;
+            return true;
         }
         // After handling CloseReason messages, proceed to process other message types
         if let Some(message::Union::LoginRequest(lr)) = msg.union {
@@ -2990,9 +3095,14 @@ impl Connection {
             let allow_logon_screen_password =
                 crate::get_builtin_option(keys::OPTION_ALLOW_LOGON_SCREEN_PASSWORD) == "Y"
                     && is_logon();
+            // The stock viewer understands No Password Access as "wait for local approval".
+            let require_password_and_approval = crate::is_managed_endpoint()
+                && password::approve_mode() == ApproveMode::Both;
 
             if (password::approve_mode() == ApproveMode::Click && !allow_logon_screen_password)
-                || password::approve_mode() == ApproveMode::Both && !password::has_valid_password()
+                || (!require_password_and_approval
+                    && password::approve_mode() == ApproveMode::Both
+                    && !password::has_valid_password())
             {
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
@@ -3010,11 +3120,18 @@ impl Connection {
                 }
                 return true;
             } else if self.is_recent_session(false) {
+                if require_password_and_approval {
+                    return self.request_managed_approval().await;
+                }
                 if !self.send_logon_response_and_keep_alive().await {
                     return false;
                 }
                 self.try_start_cm(lr.my_id.clone(), lr.my_name.clone(), self.authorized);
             } else if lr.password.is_empty() {
+                if require_password_and_approval {
+                    self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_EMPTY).await;
+                    return true;
+                }
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 if should_use_terminal_os_login_scope(self.terminal, &lr.os_login.username) {
                     if let Some(keep_alive) = self.prepare_terminal_login_for_authorization().await
@@ -3033,9 +3150,14 @@ impl Connection {
                     self.check_update_temporary_password(false);
                     self.send_login_error(crate::client::LOGIN_MSG_PASSWORD_WRONG)
                         .await;
-                    self.try_start_cm(lr.my_id, lr.my_name, false);
+                    if !require_password_and_approval {
+                        self.try_start_cm(lr.my_id, lr.my_name, false);
+                    }
                 } else {
                     self.update_failure_with_scope(failure, true, 0, FailureScope::Default);
+                    if require_password_and_approval {
+                        return self.request_managed_approval().await;
+                    }
                     if !self.send_logon_response_and_keep_alive().await {
                         return false;
                     }
@@ -3141,7 +3263,7 @@ impl Connection {
                     }
                 }
             }
-        } else if self.authorized {
+        } else if self.authorized || self.selecting_windows_session {
             if self.port_forward_socket.is_some() {
                 return true;
             }
@@ -3969,9 +4091,13 @@ impl Connection {
                             crate::platform::get_current_process_session_id()
                         {
                             let sessions = crate::platform::get_available_sessions(false);
+                            if self.selecting_windows_session && !sessions.iter().any(|s| s.sid == sid) {
+                                self.send_login_error("The selected Windows session is no longer available").await;
+                                return false;
+                            }
                             if crate::platform::is_installed()
                                 && crate::platform::is_share_rdp()
-                                && raii::AuthedConnID::non_port_forward_conn_count() == 1
+                                && raii::AuthedConnID::non_port_forward_conn_count() == usize::from(self.authorized)
                                 && sessions.len() > 1
                                 && current_process_sid != sid
                                 && sessions.iter().any(|e| e.sid == sid)
@@ -3980,6 +4106,15 @@ impl Connection {
                                     let _ = ipc::connect_to_user_session(Some(sid));
                                 });
                                 return false;
+                            }
+                            if self.selecting_windows_session {
+                                if current_process_sid != sid {
+                                    self.send_login_error("Another connection is using the Windows session").await;
+                                    return false;
+                                }
+                                self.selecting_windows_session = false;
+                                self.request_local_approval().await;
+                                return true;
                             }
                             if self.file_transfer.is_some() {
                                 if let Some((dir, show_hidden)) = self.delayed_read_dir.take() {

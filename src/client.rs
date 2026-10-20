@@ -421,7 +421,9 @@ impl Client {
         (i32, String),
         bool,
     )> {
-        if config::is_incoming_only() && !is_switch_sides_back(conn_type, &interface).await {
+        if crate::is_managed_endpoint()
+            || (config::is_incoming_only() && !is_switch_sides_back(conn_type, &interface).await)
+        {
             bail!("Incoming only mode");
         }
         // to-do: remember the port for each peer, so that we can retry easier
@@ -464,18 +466,22 @@ impl Client {
             crate::get_rendezvous_server(1_000).await
         } else {
             if other_server == PUBLIC_SERVER {
+                let Some((server, servers)) = RENDEZVOUS_SERVERS.split_first() else {
+                    bail!("Public rendezvous servers are disabled");
+                };
                 (
-                    check_port(RENDEZVOUS_SERVERS[0], RENDEZVOUS_PORT),
-                    RENDEZVOUS_SERVERS[1..]
-                        .iter()
-                        .map(|x| x.to_string())
-                        .collect(),
+                    check_port(server, RENDEZVOUS_PORT),
+                    servers.iter().map(|x| x.to_string()).collect(),
                     true,
                 )
             } else {
                 (check_port(other_server, RENDEZVOUS_PORT), Vec::new(), true)
             }
         };
+
+        if rendezvous_server.is_empty() {
+            bail!("No rendezvous server configured");
+        }
 
         // Same relay gate as the v6 socket below: under any forced relay the v6 punch cannot
         // be used, so probing v6 reachability is wasted work on every such connection.

@@ -51,6 +51,7 @@ fn initialize(app_dir: &str, custom_client_config: &str) {
     } else {
         crate::read_custom_client(custom_client_config);
     }
+    crate::apply_managed_endpoint_policy();
     #[cfg(target_os = "android")]
     {
         // flexi_logger can't work when android_logger initialized.
@@ -1118,11 +1119,11 @@ pub fn main_get_socks() -> Vec<String> {
 }
 
 pub fn main_get_app_name() -> String {
-    get_app_name()
+    crate::DISPLAY_NAME.to_owned()
 }
 
 pub fn main_get_app_name_sync() -> SyncReturn<String> {
-    SyncReturn(get_app_name())
+    SyncReturn(crate::DISPLAY_NAME.to_owned())
 }
 
 pub fn main_uri_prefix_sync() -> SyncReturn<String> {
@@ -2505,7 +2506,7 @@ pub fn main_support_remove_wallpaper() -> bool {
 }
 
 pub fn is_incoming_only() -> SyncReturn<bool> {
-    SyncReturn(config::is_incoming_only())
+    SyncReturn(crate::is_incoming_only())
 }
 
 pub fn is_outgoing_only() -> SyncReturn<bool> {

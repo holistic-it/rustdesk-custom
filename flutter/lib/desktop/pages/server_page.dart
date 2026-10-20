@@ -194,18 +194,17 @@ class ConnectionManagerState extends State<ConnectionManager>
               ),
             ],
           )
-        : Listener(
+        : withTitleBar(Listener(
             onPointerDown: pointerHandler,
             onPointerMove: pointerHandler,
             child: DesktopTab(
+              showLogo: false,
               showTitle: false,
               showMaximize: false,
-              showMinimize: true,
-              showClose: true,
-              onWindowCloseButton: handleWindowCloseButton,
+              showMinimize: false,
+              showClose: false,
               controller: serverModel.tabController,
               selectedBorderColor: MyTheme.accent,
-              maxLabelWidth: 100,
               tail: null, //buildScrollJumper(),
               tabBuilder: (key, icon, label, themeConf) {
                 final client = serverModel.clients
@@ -216,7 +215,13 @@ class ConnectionManagerState extends State<ConnectionManager>
                     Tooltip(
                         message: key,
                         waitDuration: Duration(seconds: 1),
-                        child: label),
+                        child: DefaultTextStyle.merge(
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.normal,
+                          ),
+                          child: label,
+                        )),
                     unreadMessageCountBuilder(client?.unreadChatMessageCount)
                         .marginOnly(left: 4),
                   ],
@@ -273,7 +278,17 @@ class ConnectionManagerState extends State<ConnectionManager>
                 },
               ),
             ),
-          );
+          ));
+  }
+
+  Widget withTitleBar(Widget child) {
+    return Column(children: [
+      buildTitleBar(
+        showMinimize: true,
+        onClose: () => handleWindowCloseButton(),
+      ),
+      Expanded(child: child),
+    ]);
   }
 
   Widget buildSidePage() {
@@ -293,27 +308,44 @@ class ConnectionManagerState extends State<ConnectionManager>
     return ExcludeFocus(child: child, excluding: true);
   }
 
-  Widget buildTitleBar() {
+  Widget buildTitleBar({bool showMinimize = false, VoidCallback? onClose}) {
     return SizedBox(
       height: kDesktopRemoteTabBarHeight,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const _AppIcon(),
           Expanded(
             child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
               onPanStart: (d) {
                 windowManager.startDragging();
               },
-              child: Container(
-                color: Theme.of(context).colorScheme.background,
+              child: Row(
+                children: [
+                  const _AppIcon(),
+                  Text(
+                    bind.mainGetAppNameSync(),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          const SizedBox(
-            width: 4.0,
+          if (showMinimize)
+            ActionIcon(
+              message: 'Minimize',
+              icon: IconFont.min,
+              onTap: windowManager.minimize,
+            ),
+          ActionIcon(
+            message: 'Close',
+            icon: IconFont.close,
+            onTap: onClose ?? windowManager.close,
+            isClose: true,
           ),
-          const _CloseButton()
         ],
       ),
     );
@@ -371,7 +403,10 @@ Widget buildConnectionCard(Client client) {
         client.type_() == ClientType.file ||
                 client.type_() == ClientType.portForward ||
                 client.type_() == ClientType.terminal ||
-                client.disconnected
+                client.disconnected ||
+                bind.mainGetBuildinOption(
+                        key: kOptionEnablePermChangeInAcceptWindow) ==
+                    'N'
             ? Offstage()
             : _PrivilegeBoard(client: client),
         Expanded(
@@ -391,27 +426,8 @@ class _AppIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 4.0),
-      child: loadIcon(30),
-    );
-  }
-}
-
-class _CloseButton extends StatelessWidget {
-  const _CloseButton({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: () {
-        windowManager.close();
-      },
-      icon: const Icon(
-        IconFont.close,
-        size: 18,
-      ),
-      splashColor: Colors.transparent,
-      hoverColor: Colors.transparent,
+      margin: const EdgeInsets.symmetric(horizontal: 4.0),
+      child: loadIcon(16),
     );
   }
 }

@@ -771,7 +771,7 @@ impl RendezvousMediator {
         }
         let peer_addr_v6 = hbb_common::AddrMangle::decode(&fla.socket_addr_v6);
         let relay_server = self.get_relay_server(fla.relay_server.clone());
-        let relay = use_ws() || Config::is_proxy();
+        let relay = crate::is_managed_endpoint() || use_ws() || Config::is_proxy();
         let mut socket_addr_v6 = Default::default();
         let meta = connection_meta(
             fla.control_permissions.clone().into_option(),
@@ -1060,7 +1060,7 @@ impl RendezvousMediator {
         }
         let peer_addr_v6 = hbb_common::AddrMangle::decode(&ph.socket_addr_v6);
         let local_proxy = use_ws() || Config::is_proxy();
-        let relay = local_proxy || ph.force_relay;
+        let relay = crate::is_managed_endpoint() || local_proxy || ph.force_relay;
         let mut socket_addr_v6 = Default::default();
         let meta = connection_meta(
             ph.control_permissions.clone().into_option(),
@@ -1075,7 +1075,8 @@ impl RendezvousMediator {
         // syncs over IPC, so this (server) process would read the private-server default of "N"
         // and refuse to answer in exactly the self-hosted deployments the transport is for.
         // A proxy still rules it out — ICE would bypass it and leak the real IP.
-        let webrtc_viable = !ph.webrtc_sdp_offer.is_empty()
+        let webrtc_viable = !crate::is_managed_endpoint()
+            && !ph.webrtc_sdp_offer.is_empty()
             && !Config::is_proxy()
             && (!webrtc_relay_only || WebRTCStream::has_turn_server());
         let webrtc_sdp_answer = if webrtc_viable {
@@ -1352,6 +1353,9 @@ fn get_direct_port() -> i32 {
 }
 
 async fn direct_server(server: ServerPtr) {
+    if crate::is_managed_endpoint() {
+        return;
+    }
     let mut listener = None;
     let mut port = 0;
     loop {

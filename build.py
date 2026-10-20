@@ -119,6 +119,11 @@ def make_parser():
     parser.add_argument('--flutter', action='store_true',
                         help='Build flutter package', default=False)
     parser.add_argument(
+        '--managed-endpoint',
+        action='store_true',
+        help='Build an incoming-only managed endpoint.',
+        default=False)
+    parser.add_argument(
         '--hwcodec',
         action='store_true',
         help='Enable feature hwcodec' + (
@@ -312,8 +317,19 @@ def linux_packaging_branch():
     return 'deb'
 
 
+def apply_managed_endpoint_patch():
+    root = Path(__file__).resolve().parent
+    patch = str(root / 'res/hbb-common.patch')
+    command = ['git', '-C', str(root / 'libs/hbb_common'), 'apply']
+    if subprocess.run(command + ['--reverse', '--check', patch], capture_output=True).returncode != 0:
+        subprocess.run(command + ['--check', patch], check=True)
+        subprocess.run(command + [patch], check=True)
+
+
 def get_features(args):
     features = ['inline'] if not args.flutter else []
+    if args.managed_endpoint:
+        features.append('managed-endpoint')
     if args.hwcodec:
         features.append('hwcodec')
     if args.vram:
@@ -1014,6 +1030,9 @@ def main():
             feats = ','.join(get_features(args))
         print(feats)
         return
+
+    if args.managed_endpoint:
+        apply_managed_endpoint_patch()
 
     if os.path.exists(exe_path):
         os.unlink(exe_path)

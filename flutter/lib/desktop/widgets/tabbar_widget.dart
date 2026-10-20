@@ -632,7 +632,9 @@ class _DesktopTabState extends State<DesktopTab>
                           width: 78,
                         )),
                     Offstage(
-                      offstage: kUseCompatibleUiMode || isMacOS,
+                      offstage: kUseCompatibleUiMode ||
+                          isMacOS ||
+                          (!showLogo && !showTitle),
                       child: Row(children: [
                         Offstage(
                           offstage: !showLogo,
