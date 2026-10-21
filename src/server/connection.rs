@@ -2108,6 +2108,10 @@ impl Connection {
         if !self.terminal {
             self.handle_windows_specific_session(&mut pi, &mut wait_session_id_confirm);
         }
+        #[cfg(target_os = "windows")]
+        if self.is_remote() {
+            crate::platform::session_metadata::augment_peer_info(&mut pi);
+        }
         if self.file_transfer.is_some() || self.terminal {
             res.set_peer_info(pi);
         } else if self.view_camera {

@@ -644,6 +644,9 @@ fn displays_to_msg(displays: Vec<DisplayInfo>) -> Message {
         pi.platform_additions = serde_json::to_string(&m).unwrap_or_default();
     }
 
+    #[cfg(target_os = "windows")]
+    crate::platform::session_metadata::augment_peer_info(&mut pi);
+
     // current_display should not be used in server.
     // It is set to 0 for compatibility with old clients.
     pi.current_display = 0;
@@ -705,6 +708,8 @@ fn get_displays_msg() -> Option<Message> {
 }
 
 fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
+    #[cfg(target_os = "windows")]
+    let mut last_session_metadata = None;
     while sp.ok() {
         sp.snapshot(|sps| {
             if !TEMP_IGNORE_DISPLAYS_CHANGED.load(Ordering::Relaxed) {
@@ -719,6 +724,18 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
         if let Some(msg_out) = check_get_displays_changed_msg() {
             sp.send(msg_out);
             log::info!("Displays changed");
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let metadata = crate::platform::session_metadata::snapshot();
+            if last_session_metadata.as_ref() != Some(&metadata) {
+                last_session_metadata = Some(metadata);
+                let displays = get_sync_displays();
+                if !displays.is_empty() {
+                    sp.send(displays_to_msg(displays));
+                }
+            }
         }
 
         #[cfg(target_os = "linux")]

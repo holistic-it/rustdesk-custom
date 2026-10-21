@@ -628,6 +628,38 @@ extern "C"
         return locked;
     }
 
+    BOOL get_session_account_state(DWORD session_id, PWSTR account, DWORD capacity, int32_t *locked)
+    {
+        if (!account || capacity == 0 || !locked) return FALSE;
+        account[0] = L'\0';
+        *locked = -1;
+        PWTSINFOEXW info = NULL;
+        DWORD bytes = 0;
+        if (!WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, session_id,
+                WTSSessionInfoEx, (LPWSTR *)&info, &bytes)) return FALSE;
+        BOOL valid = FALSE;
+        if (info && bytes >= sizeof(WTSINFOEXW) && info->Level == 1
+                && info->Data.WTSInfoExLevel1.SessionId == session_id)
+        {
+            const auto &session = info->Data.WTSInfoExLevel1;
+            std::wstring qualified;
+            if (session.UserName[0])
+            {
+                if (session.DomainName[0]) qualified = std::wstring(session.DomainName) + L"\\";
+                qualified += session.UserName;
+            }
+            if (qualified.size() < capacity)
+            {
+                memcpy(account, qualified.c_str(), (qualified.size() + 1) * sizeof(wchar_t));
+                if (session.SessionFlags == WTS_SESSIONSTATE_LOCK) *locked = 1;
+                else if (session.SessionFlags == WTS_SESSIONSTATE_UNLOCK) *locked = 0;
+                valid = TRUE;
+            }
+        }
+        if (info) WTSFreeMemory(info);
+        return valid;
+    }
+
     uint32_t get_active_user(PWSTR bufin, uint32_t nin, BOOL rdp)
     {
         uint32_t nout = 0;

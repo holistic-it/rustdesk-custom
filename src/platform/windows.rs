@@ -100,6 +100,7 @@ mod acl;
 mod installer_handoff;
 mod installer_shell;
 mod msi_registry;
+pub mod session_metadata;
 pub(crate) use acl::current_process_user_sid_string;
 pub use acl::{
     set_path_permission, set_path_permission_for_portable_service_shmem_dir,
@@ -1171,7 +1172,7 @@ pub fn get_available_sessions(name: bool) -> Vec<WindowsSession> {
     let physical_console_sid = unsafe { get_current_session(FALSE) };
     if physical_console_sid != u32::MAX {
         let physical_console_name = if name {
-            let physical_console_username = get_session_username(physical_console_sid);
+            let physical_console_username = session_metadata::account_name(physical_console_sid);
             if physical_console_username.is_empty() {
                 "Console".to_owned()
             } else {
@@ -1193,7 +1194,7 @@ pub fn get_available_sessions(name: bool) -> Vec<WindowsSession> {
             if let Ok(sid) = split[1].parse::<u32>() {
                 if !v.iter().any(|e| (*e).sid == sid) {
                     let name = if name {
-                        let name = get_session_username(sid);
+                        let name = session_metadata::account_name(sid);
                         if name.is_empty() {
                             split[0].to_string()
                         } else {
