@@ -644,7 +644,7 @@ fn displays_to_msg(displays: Vec<DisplayInfo>) -> Message {
         pi.platform_additions = serde_json::to_string(&m).unwrap_or_default();
     }
 
-    #[cfg(all(target_os = "windows", feature = "managed-endpoint"))]
+    #[cfg(target_os = "windows")]
     crate::platform::session_metadata::augment_peer_info(&mut pi);
 
     // current_display should not be used in server.
@@ -708,7 +708,7 @@ fn get_displays_msg() -> Option<Message> {
 }
 
 fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
-    #[cfg(all(target_os = "windows", feature = "managed-endpoint"))]
+    #[cfg(target_os = "windows")]
     let mut last_session_metadata = None;
     while sp.ok() {
         sp.snapshot(|sps| {
@@ -726,7 +726,7 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
             log::info!("Displays changed");
         }
 
-        #[cfg(all(target_os = "windows", feature = "managed-endpoint"))]
+        #[cfg(target_os = "windows")]
         {
             let metadata = crate::platform::session_metadata::snapshot();
             if last_session_metadata.as_ref() != Some(&metadata) {

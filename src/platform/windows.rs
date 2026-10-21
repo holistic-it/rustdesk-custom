@@ -100,7 +100,6 @@ mod acl;
 mod installer_handoff;
 mod installer_shell;
 mod msi_registry;
-#[cfg(feature = "managed-endpoint")]
 pub mod session_metadata;
 pub(crate) use acl::current_process_user_sid_string;
 pub use acl::{

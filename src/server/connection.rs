@@ -2034,7 +2034,7 @@ impl Connection {
             pi.platform_additions = serde_json::to_string(&platform_additions).unwrap_or("".into());
         }
 
-        #[cfg(all(target_os = "windows", feature = "managed-endpoint"))]
+        #[cfg(target_os = "windows")]
         crate::platform::session_metadata::augment_peer_info(&mut pi);
 
         if self.is_port_forward() {
