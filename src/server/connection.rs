@@ -2295,6 +2295,15 @@ impl Connection {
         pi: &mut PeerInfo,
         wait_session_id_confirm: &mut bool,
     ) {
+        if crate::is_managed_endpoint() {
+            if let Some(current_sid) = crate::platform::get_current_process_session_id() {
+                pi.windows_sessions = Some(WindowsSessions {
+                    current_sid,
+                    ..Default::default()
+                })
+                .into();
+            }
+        }
         // Managed Prompt connections already chose their session before approval.
         if crate::is_managed_endpoint() && self.local_approval_granted {
             return;
