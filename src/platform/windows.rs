@@ -1134,7 +1134,7 @@ fn get_current_session_username() -> Option<String> {
         log::error!("get_current_process_session_id failed");
         return None;
     };
-    Some(get_session_username(sid))
+    Some(session_metadata::username(sid))
 }
 
 fn get_session_username(session_id: u32) -> String {

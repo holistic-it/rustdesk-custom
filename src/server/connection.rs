@@ -2034,9 +2034,6 @@ impl Connection {
             pi.platform_additions = serde_json::to_string(&platform_additions).unwrap_or("".into());
         }
 
-        #[cfg(target_os = "windows")]
-        crate::platform::session_metadata::augment_peer_info(&mut pi);
-
         if self.is_port_forward() {
             pi.features = Some(Features {
                 port_forward_mux: self.port_forward_mux.is_some(),
@@ -2110,6 +2107,10 @@ impl Connection {
         #[cfg(windows)]
         if !self.terminal {
             self.handle_windows_specific_session(&mut pi, &mut wait_session_id_confirm);
+        }
+        #[cfg(target_os = "windows")]
+        if self.is_remote() {
+            crate::platform::session_metadata::augment_peer_info(&mut pi);
         }
         if self.file_transfer.is_some() || self.terminal {
             res.set_peer_info(pi);

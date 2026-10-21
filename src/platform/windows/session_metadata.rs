@@ -24,7 +24,9 @@ fn cache() -> &'static Arc<Mutex<Sample>> {
             .name("session-account".to_owned())
             .spawn(move || loop {
                 let started = Instant::now();
-                let account = query();
+                let account = super::get_current_process_session_id()
+                    .filter(|sid| *sid > 0)
+                    .and_then(query);
                 *destination.lock().unwrap() = Some((started, account));
                 std::thread::sleep(Duration::from_secs(2));
             })
@@ -35,8 +37,7 @@ fn cache() -> &'static Arc<Mutex<Sample>> {
     })
 }
 
-fn query() -> Option<SessionAccount> {
-    let sid = super::get_current_process_session_id().filter(|sid| *sid > 0)?;
+fn query(sid: u32) -> Option<SessionAccount> {
     extern "C" {
         fn get_session_account_state(
             sid: u32,
@@ -67,36 +68,17 @@ fn query() -> Option<SessionAccount> {
     })
 }
 
-pub fn snapshot() -> Map<String, Value> {
+pub fn username(sid: u32) -> String {
+    query(sid).map(|value| value.account).unwrap_or_default()
+}
+
+pub fn snapshot() -> Option<(u32, String, Option<bool>)> {
     // WTS can hang indefinitely. One worker owns every query; packet and display
     // threads only read its short-lived cache and publish unknown after expiry.
     let sample = cache().lock().unwrap().clone();
-    let current =
-        sample.and_then(|(at, value)| (at.elapsed() <= MAX_AGE).then_some(value).flatten());
-    Map::from_iter([
-        ("holistic_session_version".to_owned(), Value::from(1)),
-        (
-            "holistic_session_id".to_owned(),
-            current
-                .as_ref()
-                .map(|value| Value::from(value.sid))
-                .unwrap_or(Value::Null),
-        ),
-        (
-            "holistic_session_account".to_owned(),
-            current
-                .as_ref()
-                .map(|value| Value::from(value.account.as_str()))
-                .unwrap_or(Value::Null),
-        ),
-        (
-            "holistic_session_locked".to_owned(),
-            current
-                .and_then(|value| value.locked)
-                .map(Value::from)
-                .unwrap_or(Value::Null),
-        ),
-    ])
+    sample
+        .and_then(|(at, value)| (at.elapsed() <= MAX_AGE).then_some(value).flatten())
+        .map(|value| (value.sid, value.account, value.locked))
 }
 
 pub fn augment_peer_info(peer: &mut base::message_proto::PeerInfo) {
@@ -111,7 +93,31 @@ pub fn augment_peer_info(peer: &mut base::message_proto::PeerInfo) {
             }
         }
     };
-    additions.extend(snapshot());
+    let current = snapshot();
+    let sid = current
+        .as_ref()
+        .map(|value| value.0)
+        .or_else(|| super::get_current_process_session_id().filter(|sid| *sid > 0));
+    peer.platform = "Windows".to_owned();
+    if let Some((_, account, _)) = &current {
+        peer.username = account.clone();
+    }
+    if peer.windows_sessions.is_none() {
+        if let Some(current_sid) = sid {
+            peer.windows_sessions = Some(base::message_proto::WindowsSessions {
+                current_sid,
+                ..Default::default()
+            })
+            .into();
+        }
+    }
+    additions.insert(
+        "is_screen_locked".to_owned(),
+        current
+            .and_then(|value| value.2)
+            .map(Value::from)
+            .unwrap_or(Value::Null),
+    );
     match serde_json::to_string(&additions) {
         Ok(value) => peer.platform_additions = value,
         Err(error) => hbb_common::log::trace!("Cannot serialize session metadata: {error}"),
