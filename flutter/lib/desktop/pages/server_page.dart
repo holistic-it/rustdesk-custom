@@ -510,12 +510,13 @@ class _CmHeaderState extends State<_CmHeader>
                   ),
                   maxLines: 1,
                 )),
-                FittedBox(
-                  child: Text(
-                    "(${client.peerId})",
-                    style: TextStyle(color: Colors.white, fontSize: 14),
+                if (!bind.isIncomingOnly())
+                  FittedBox(
+                    child: Text(
+                      "(${client.peerId})",
+                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    ),
                   ),
-                ),
                 if (client.type_() == ClientType.terminal)
                   FittedBox(
                     child: Text(
