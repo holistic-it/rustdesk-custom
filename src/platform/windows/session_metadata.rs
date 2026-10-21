@@ -68,10 +68,6 @@ fn query(sid: u32) -> Option<SessionAccount> {
     })
 }
 
-pub fn username(sid: u32) -> String {
-    query(sid).map(|value| value.account).unwrap_or_default()
-}
-
 pub fn snapshot() -> Option<(u32, String, Option<bool>)> {
     // WTS can hang indefinitely. One worker owns every query; packet and display
     // threads only read its short-lived cache and publish unknown after expiry.
