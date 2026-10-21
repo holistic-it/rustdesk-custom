@@ -45,6 +45,16 @@ The MSI installs the service stopped and disabled, including after repair or
 upgrade. The Holistic agent enables it for a session and disables it afterward.
 The EXE installer retains its existing service installation behavior.
 
+The Windows installation is `C:\Program Files\HolisticRemote\HolisticRemote.exe`
+with `HolisticRemote.dll` and service `HolisticRemote`. Configuration, logs, IPC,
+and the MSI upgrade family use the separate `HolisticRemote` identity. The Rust
+crate name and exported functions remain unchanged. Managed packages omit the
+printer driver and adapter, and neither installer runs printer setup or cleanup.
+
+Existing installations require a separate deployment migration. Configure the
+RMM agent's `RustDesk.ExecutablePath` and `RustDesk.ServiceName` for the new
+installation; remove only positively identified legacy Holistic packages.
+
 Public rendezvous servers, their public key, and native/WebRTC STUN defaults
 are removed. Only explicitly configured rendezvous servers are used; cached
 server lists are ignored. Relay discovery uses the configured rendezvous server.
@@ -76,3 +86,6 @@ RustDesk is licensed under AGPL-3.0. Distributed modified binaries must retain
 the applicable notices and make their exact corresponding source available.
 Keep release tags immutable so every package maps to a specific source
 revision.
+Windows packages contain one `LICENSE` file with the modification notice,
+source date, exact source URL, and unchanged AGPL text. The build guide stays in
+the source repository; it is not installed as `MODIFIED_BUILD.md`.

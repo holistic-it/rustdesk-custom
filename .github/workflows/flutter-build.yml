@@ -54,6 +54,7 @@ env:
   VCPKG_CMAKE_VERSION: "4.3.0"
   ARMV7_VCPKG_COMMIT_ID: "6f29f12e82a8293156836ad81cc9bf5af41fe836" # 2025.01.13, got "/opt/artifacts/vcpkg/vcpkg: No such file or directory" with latest version
   VERSION: "1.5.0"
+  WINDOWS_APP_NAME: "HolisticRemote"
   NDK_VERSION: "r28c"
   #signing keys env variable checks
   ANDROID_SIGNING_KEY: "${{ secrets.ANDROID_SIGNING_KEY }}"
@@ -293,33 +294,6 @@ jobs:
           Remove-Item -Path "usbmmidd_v2\deviceinstaller64.exe", "usbmmidd_v2\deviceinstaller.exe", "usbmmidd_v2\usbmmidd.bat"
           mv -Force .\usbmmidd_v2 ./rustdesk
 
-          # Download printer driver files and extract them to ./rustdesk
-          try {
-            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/rustdesk_printer_driver_v4-1.4.zip -OutFile rustdesk_printer_driver_v4-1.4.zip
-            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/printer_driver_adapter.zip -OutFile printer_driver_adapter.zip
-            Invoke-WebRequest -Uri https://github.com/rustdesk/hbb_common/releases/download/driver/sha256sums -OutFile sha256sums
-
-            # Check and move the files
-            $checksum_driver = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*rustdesk_printer_driver_v4-1.4\.zip$').Matches.Groups[1].Value
-            $downloadsum_driver = Get-FileHash -Path rustdesk_printer_driver_v4-1.4.zip -Algorithm SHA256
-            $checksum_adapter = (Select-String -Path .\sha256sums -Pattern '^([a-fA-F0-9]{64}) \*printer_driver_adapter\.zip$').Matches.Groups[1].Value
-            $downloadsum_adapter = Get-FileHash -Path printer_driver_adapter.zip -Algorithm SHA256
-            if ($checksum_driver -eq $downloadsum_driver.Hash -and $checksum_adapter -eq $downloadsum_adapter.Hash) {
-                Write-Output "rustdesk_printer_driver_v4-1.4, checksums match, extract the file."
-                Expand-Archive rustdesk_printer_driver_v4-1.4.zip -DestinationPath .
-                mkdir ./rustdesk/drivers
-                mv -Force .\rustdesk_printer_driver_v4-1.4 ./rustdesk/drivers/RustDeskPrinterDriver
-                Expand-Archive printer_driver_adapter.zip -DestinationPath .
-                mv -Force .\printer_driver_adapter.dll ./rustdesk
-            } elseif ($checksum_driver -ne $downloadsum_driver.Hash) {
-                Write-Output "rustdesk_printer_driver_v4-1.4, checksums do not match, ignore the file."
-            } else {
-                Write-Output "printer_driver_adapter.dll, checksums do not match, ignore the file."
-            }
-          } catch {
-              Write-Host "Ingore the printer driver error."
-          }
-
       - name: find Runner.res
         # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res
         # Runner.rc does not contain actual version, but Runner.res does
@@ -346,8 +320,9 @@ jobs:
       - name: Add license and modification notice
         if: env.UPLOAD_ARTIFACT == 'true'
         run: |
-          Copy-Item LICENCE ./rustdesk/LICENCE
-          Copy-Item CUSTOM_BUILD.md ./rustdesk/MODIFIED_BUILD.md
+          $modified = git log -1 --format=%cs
+          $notice = "Holistic Remote - RustDesk modified by Holistic IT GmbH ($modified).`nGNU AGPLv3. Source: https://github.com/${{ github.repository }}/tree/${{ github.sha }}`n`n"
+          Set-Content ./rustdesk/LICENSE -Value ($notice + (Get-Content LICENCE -Raw)) -Encoding utf8NoBOM -NoNewline
 
       - name: Upload unsigned
         if: env.UPLOAD_ARTIFACT == 'true'
@@ -370,7 +345,7 @@ jobs:
           sed -i '/dpiAware/d' res/manifest.xml
           pushd ./libs/portable
           pip3 install -r requirements.txt
-          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/rustdesk.exe
+          python3 ./generate.py -f ../../rustdesk/ -o . -e ../../rustdesk/${{ env.WINDOWS_APP_NAME }}.exe
           popd
           mkdir -p ./SignOutput
           mv ./target/release/rustdesk-portable-packer.exe ./SignOutput/holistic-remote-${{ env.VERSION }}-${{ matrix.job.arch }}.exe
@@ -398,7 +373,7 @@ jobs:
           } else {
             throw "The release tag '$env:TAG_NAME' does not contain a numeric custom revision."
           }
-          python preprocess.py --version $msiVersion --conn-type incoming --manufacturer "Holistic IT GmbH" -d ../../rustdesk
+          python preprocess.py --version $msiVersion --app-name $env:WINDOWS_APP_NAME --conn-type incoming --manufacturer "Holistic IT GmbH" -d ../../rustdesk
           nuget restore msi.sln
           $msiPlatform = if ('${{ matrix.job.arch }}' -eq 'aarch64') { 'ARM64' } else { 'x64' }
           msbuild msi.sln -p:Configuration=Release -p:Platform=$msiPlatform /p:TargetVersion=Windows10
@@ -411,6 +386,18 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $msi = (Resolve-Path ./SignOutput/holistic-remote-${{ env.VERSION }}-${{ matrix.job.arch }}.msi).Path
+          if ('${{ inputs.windows-x64-only }}' -eq 'true') {
+            $installer = New-Object -ComObject WindowsInstaller.Installer
+            $database = $installer.OpenDatabase($msi, 0)
+            $view = $database.OpenView('SELECT `Action` FROM `InstallExecuteSequence`')
+            $view.Execute()
+            while ($null -ne ($record = $view.Fetch())) {
+              if ($record.StringData(1) -match '^(Install|Uninstall)Printer') {
+                throw 'The managed MSI must not install or uninstall printer drivers.'
+              }
+            }
+            $view.Close()
+          }
           function Invoke-Msi([string[]]$Arguments) {
             $process = Start-Process msiexec.exe -ArgumentList $Arguments -Wait -PassThru
             if ($process.ExitCode -notin @(0, 3010)) {
@@ -418,25 +405,34 @@ jobs:
             }
           }
           function Assert-DormantService {
-            $service = Get-CimInstance Win32_Service -Filter "Name = 'RustDesk'"
+            $service = Get-CimInstance Win32_Service -Filter "Name = '$env:WINDOWS_APP_NAME'"
             if ($null -eq $service -or $service.State -ne 'Stopped' -or $service.StartMode -ne 'Disabled') {
-              throw 'The MSI must leave the RustDesk service installed, stopped, and disabled.'
+              throw 'The MSI must leave its service installed, stopped, and disabled.'
             }
-            if (Get-Process rustdesk -ErrorAction SilentlyContinue) {
-              throw 'The MSI must not launch RustDesk.'
+            if (Get-Process $env:WINDOWS_APP_NAME -ErrorAction SilentlyContinue) {
+              throw 'The MSI must not launch the endpoint.'
+            }
+            if ('${{ inputs.windows-x64-only }}' -eq 'true') {
+              $directory = Join-Path $env:ProgramFiles 'HolisticRemote'
+              if (-not (Test-Path "$directory/HolisticRemote.dll") -or
+                  (Test-Path "$directory/librustdesk.dll") -or
+                  (Test-Path "$directory/drivers/RustDeskPrinterDriver") -or
+                  (Test-Path "$directory/printer_driver_adapter.dll")) {
+                throw 'The managed MSI must contain HolisticRemote.dll and no printer payload.'
+              }
             }
           }
           try {
             Invoke-Msi @('/i', "`"$msi`"", '/qn', '/norestart')
             Assert-DormantService
-            Set-Service RustDesk -StartupType Automatic
+            Set-Service $env:WINDOWS_APP_NAME -StartupType Automatic
             Invoke-Msi @('/i', "`"$msi`"", '/qn', '/norestart', 'REINSTALL=ALL', 'REINSTALLMODE=vamus')
             Assert-DormantService
           } finally {
             Invoke-Msi @('/x', "`"$msi`"", '/qn', '/norestart')
           }
-          if (Get-CimInstance Win32_Service -Filter "Name = 'RustDesk'") {
-            throw 'Uninstall must remove the RustDesk service.'
+          if (Get-CimInstance Win32_Service -Filter "Name = '$env:WINDOWS_APP_NAME'") {
+            throw 'Uninstall must remove the endpoint service.'
           }
 
       - name: Upload managed test MSI
@@ -469,7 +465,7 @@ jobs:
         run: |
           git checkout -- res/msi
           cp -r ./rustdesk ./rustdesk-msi-template
-          mv ./rustdesk-msi-template/rustdesk.exe ./rustdesk-msi-template/RDAPPNAM.exe
+          mv ./rustdesk-msi-template/HolisticRemote.exe ./rustdesk-msi-template/RDAPPNAM.exe
           Set-Content -Path ./rustdesk-msi-template/custom.txt -Value 'placeholder' -NoNewline
           $assets = './rustdesk-msi-template/data/flutter_assets/assets'
           New-Item -ItemType Directory -Force -Path $assets | Out-Null

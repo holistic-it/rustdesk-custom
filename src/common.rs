@@ -1090,6 +1090,7 @@ pub fn get_app_name() -> String {
 }
 
 pub const DISPLAY_NAME: &str = "Holistic Remote";
+pub const APP_NAME: &str = "HolisticRemote";
 
 #[inline]
 pub fn is_rustdesk() -> bool {
@@ -2377,6 +2378,7 @@ pub fn rustdesk_interval(i: Interval) -> ThrottledInterval {
 }
 
 pub fn load_custom_client() {
+    *config::APP_NAME.write().unwrap() = APP_NAME.to_owned();
     #[cfg(debug_assertions)]
     if let Ok(data) = std::fs::read_to_string("./custom.txt") {
         read_custom_client(data.trim());
@@ -2495,11 +2497,7 @@ pub fn read_custom_client(config: &str) {
         return;
     };
 
-    if let Some(app_name) = data.remove("app-name") {
-        if let Some(app_name) = app_name.as_str() {
-            *config::APP_NAME.write().unwrap() = app_name.to_owned();
-        }
-    }
+    data.remove("app-name");
 
     let mut map_display_settings = HashMap::new();
     for s in keys::KEYS_DISPLAY_SETTINGS {
@@ -3008,6 +3006,13 @@ mod tests {
         time::{interval, interval_at, sleep, Duration, Instant, Interval},
     };
     use std::collections::HashSet;
+
+    #[test]
+    fn fork_uses_a_separate_application_namespace() {
+        load_custom_client();
+        assert_eq!(get_app_name(), "HolisticRemote");
+        assert_eq!(get_uri_prefix(), "holisticremote://");
+    }
 
     #[cfg(feature = "managed-endpoint")]
     #[test]

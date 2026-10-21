@@ -1298,8 +1298,6 @@ pub fn lock_screen() {
     }
 }
 
-const IS1: &str = "{54E86BC2-6C85-41F3-A9EB-1A94AC9B1F93}_is1";
-
 fn get_subkey(name: &str, wow: bool) -> String {
     let tmp = format!(
         "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}",
@@ -1315,14 +1313,6 @@ fn get_subkey(name: &str, wow: bool) -> String {
 fn get_valid_subkey() -> String {
     let app_name = crate::get_app_name();
     let subkey = format!("{HKLM_PREFIX}Software\\{app_name}\\InstallState\\{app_name}");
-    if !get_reg_of(&subkey, "InstallLocation").is_empty() {
-        return subkey;
-    }
-    let subkey = get_subkey(IS1, false);
-    if !get_reg_of(&subkey, "InstallLocation").is_empty() {
-        return subkey;
-    }
-    let subkey = get_subkey(IS1, true);
     if !get_reg_of(&subkey, "InstallLocation").is_empty() {
         return subkey;
     }
@@ -1967,8 +1957,8 @@ fn get_public_base_dir() -> PathBuf {
 #[inline]
 pub fn get_custom_client_staging_dir() -> PathBuf {
     get_public_base_dir()
-        .join("RustDesk")
-        .join("RustDeskCustomClientStaging")
+        .join(crate::APP_NAME)
+        .join("UpdateStaging")
 }
 
 /// Removes the custom client staging directory.
@@ -3724,7 +3714,7 @@ fn get_msi_product_code(subkey: &str, installer_state: Option<bool>) -> ResultTy
     match parse_msi_product_code_from_uninstall_string(&uninstall_string, subkey)? {
         Some(product_code) => Ok(Some(product_code)),
         None if installer_state == Some(true) => {
-            msi_registry::find_product_code(&crate::get_app_name())
+            msi_registry::find_product_code(crate::DISPLAY_NAME)
         }
         None => Ok(None),
     }
@@ -3748,12 +3738,12 @@ fn is_msi_uninstall_entry_in_view(subkey: &str, wow: bool, app_name: &str) -> Re
 }
 
 fn get_msi_uninstall_subkey(product_code: &str) -> ResultType<String> {
-    let app_name = crate::get_app_name();
+    let app_name = crate::DISPLAY_NAME;
     let subkey = get_subkey(product_code, false);
-    if is_msi_uninstall_entry_in_view(&subkey, false, &app_name)? {
+    if is_msi_uninstall_entry_in_view(&subkey, false, app_name)? {
         return Ok(subkey);
     }
-    if is_msi_uninstall_entry_in_view(&subkey, true, &app_name)? {
+    if is_msi_uninstall_entry_in_view(&subkey, true, app_name)? {
         return Ok(get_subkey(product_code, true));
     }
     bail!("Matching native MSI uninstall entry {product_code} was not found")
