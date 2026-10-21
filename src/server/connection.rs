@@ -2142,7 +2142,14 @@ impl Connection {
                 self.send(msg_out).await;
             }
 
-            try_activate_screen();
+            if !crate::is_managed_endpoint()
+                || screen_activation_allowed(
+                    self.peer_keyboard_enabled(),
+                    self.options_in_login.as_ref(),
+                )
+            {
+                try_activate_screen();
+            }
 
             match super::display_service::update_get_sync_displays_on_login().await {
                 Err(err) => {
@@ -6566,6 +6573,15 @@ async fn start_ipc(
     }
 }
 
+fn screen_activation_allowed(
+    keyboard_enabled: bool,
+    login_options: Option<&OptionMessage>,
+) -> bool {
+    // Login options are applied after screen activation. Honor read-only requests here too.
+    keyboard_enabled
+        && !login_options.is_some_and(|o| o.disable_keyboard.enum_value() == Ok(BoolOption::Yes))
+}
+
 // in case screen is sleep and blank, here to activate it
 fn try_activate_screen() {
     #[cfg(windows)]
@@ -7251,6 +7267,27 @@ fn wildcard_match(pattern: &str, text: &str) -> bool {
 mod test {
     #[allow(unused)]
     use super::*;
+
+    #[test]
+    fn test_screen_activation_respects_endpoint_read_only_permission() {
+        assert!(!screen_activation_allowed(false, None));
+        let mut options = OptionMessage::new();
+        options.disable_keyboard = BoolOption::No.into();
+        assert!(!screen_activation_allowed(false, Some(&options)));
+    }
+
+    #[test]
+    fn test_screen_activation_respects_viewer_read_only_option() {
+        assert!(screen_activation_allowed(true, None));
+        let mut options = OptionMessage::new();
+        for value in [BoolOption::NotSet, BoolOption::No, BoolOption::Yes] {
+            options.disable_keyboard = value.into();
+            assert_eq!(
+                screen_activation_allowed(true, Some(&options)),
+                value != BoolOption::Yes
+            );
+        }
+    }
 
     // The registry is process-global and the harness runs tests in parallel threads, so every
     // test that admits connections holds this first; a poisoned lock is still a lock.
